@@ -26,14 +26,14 @@ public:
         this->basis = std::vector<size_t>(initial_table_coefficients.size());
         for (size_t i = 0; i < this->basis.size(); ++i)
         {
-            this->basis[i] = z_function_coefficients.size() + i;
+            this->basis[i] = z_function_coefficients.size() + i + 1;
         }
 
         this->z_function_coefficients = z_function_coefficients;
 
         // Construct grid. It contains:
-        // - a_ij coefficients;
         // - b_j coefficients;
+        // - a_ij coefficients;
         // - simplex_relation values (call it theta values).
         // It's dimensions are:
         // rows: number of inequalities in the initial table;
@@ -42,31 +42,31 @@ public:
         //       1 (for b_j coefficients).
         this->GRID_ROWS = initial_table_coefficients.size();
         this->GRID_COLS = initial_table_coefficients.size() + z_function_coefficients.size() + 1;
-        this->b_column = GRID_COLS - 1;
+        this->b_column = 0;
 
         this->grid = std::vector<std::vector<r64>>(GRID_ROWS, std::vector<r64>(GRID_COLS));
 
         for (size_t row = 0; row < initial_table_coefficients.size(); ++row)
         {
+            this->grid[row][this->b_column] = initial_table_coefficients[row][initial_table_coefficients[0].size() - 1];
+        }
+        for (size_t row = 0; row < initial_table_coefficients.size(); ++row)
+        {
             for (size_t col = 0; col < initial_table_coefficients[0].size() - 1; ++col)
             {
-                this->grid[row][col] = initial_table_coefficients[row][col];
+                this->grid[row][col + 1] = initial_table_coefficients[row][col];
             }
         }
         for (size_t row = 0; row < initial_table_coefficients.size(); ++row)
         {
             if (initial_table_signs[row] == GREATER_OR_EQUAL)
             {
-                this->grid[row][z_function_coefficients.size() + row] = r64(-1);
+                this->grid[row][z_function_coefficients.size() + row + 1] = r64(-1);
             }
             else
             {
-                this->grid[row][z_function_coefficients.size() + row] = r64(1);
+                this->grid[row][z_function_coefficients.size() + row + 1] = r64(1);
             }
-        }
-        for (size_t row = 0; row < initial_table_coefficients.size(); ++row)
-        {
-            this->grid[row][this->b_column] = initial_table_coefficients[row][initial_table_coefficients[0].size() - 1];
         }
         for (size_t row = 0; row < GRID_ROWS; ++row)
         {
@@ -79,6 +79,7 @@ public:
             }
         }
 
+        std::cout << "Initial grid:" << std::endl;
         this->Print();
         std::cout << std::endl;
 
@@ -108,7 +109,7 @@ BNegativeRemoval:
             else
             {
                 bool found_negative_a = false;
-                for (size_t col = 0; col < GRID_COLS - 1 && found_negative_a == false; ++col)
+                for (size_t col = 1; col < GRID_COLS && found_negative_a == false; ++col)
                 {
                     if (this->grid[min_b_idx][col] < 0)
                     {
@@ -124,19 +125,20 @@ BNegativeRemoval:
                     return;
                 }
 
+                std::cout << "Negative B removal:" << std::endl;
                 this->Print();
                 std::cout << std::endl;
             }
         }
 
         // Simplex loop.
-        bool plan_is_otimal = false;
-        while (plan_is_otimal == false)
+        bool plan_is_optimal = false;
+        while (plan_is_optimal == false)
         {
             // Find min delta.
             r64 delta_min = std::numeric_limits<int64_t>().max();
-            size_t delta_min_idx = 0;
-            for (size_t col = 0; col < this->GRID_COLS - 1; ++col)
+            size_t delta_min_idx = 1;
+            for (size_t col = 1; col < this->GRID_COLS; ++col)
             {
                 r64 delta_j = 0;
                 for (size_t row = 0; row < this->GRID_ROWS; ++row)
@@ -150,7 +152,7 @@ BNegativeRemoval:
                     delta_min_idx = col;
                 }
 
-                std::cout << "Delta_" << col + 1 << " = " << delta_j << std::endl;
+                std::cout << "Delta_" << col << " = " << delta_j << std::endl;
             }
             std::cout << std::endl;
 
@@ -173,12 +175,13 @@ BNegativeRemoval:
                 this->Transform(theta_min_idx, delta_min_idx);
                 this->basis[theta_min_idx] = delta_min_idx;
 
+                std::cout << "Simplex transformation:" << std::endl;
                 this->Print();
                 std::cout << std::endl;
             }
             else
             {
-                plan_is_otimal = true;
+                plan_is_optimal = true;
             }
         }
 
@@ -198,22 +201,34 @@ BNegativeRemoval:
 
         if (max_fractional_b != 0)
         {
-            // Add new row.
-            this->grid.push_back(std::vector<r64>());
+            // Add new row (and column).
             this->GRID_ROWS += 1;
-            this->basis.push_back(this->GRID_ROWS + 1);
-            for (size_t col = 0; col < this->GRID_COLS; ++col)
+            this->GRID_COLS += 1;
+            this->grid.push_back(std::vector<r64>(this->GRID_COLS));
+            
+            for (size_t row = 0; row < this->GRID_ROWS - 1; ++row)
             {
-                this->grid[GRID_ROWS - 1].push_back(-(this->grid[max_fractional_b_idx][col] - boost::rational_cast<int64_t>(this->grid[max_fractional_b_idx][col])));
+                this->grid[row].push_back(0);
             }
+            this->grid[this->GRID_ROWS - 1][this->GRID_COLS - 1] = 1;
+
+            this->basis.push_back(this->GRID_COLS - 2);
+            for (size_t col = 0; col < this->GRID_COLS - 1; ++col)
+            {
+                this->grid[GRID_ROWS - 1][col] = -(this->grid[max_fractional_b_idx][col] - boost::rational_cast<int64_t>(this->grid[max_fractional_b_idx][col]));
+            }
+
+            std::cout << "New X added:" << std::endl;
             this->Print();
+            std::cout << std::endl;
+
             goto BNegativeRemoval;
         }
 
         std::cout << "Solution:" << std::endl;
-        for (size_t col = 0; col < this->GRID_COLS - 1; ++col)
+        for (size_t col = 1; col < this->GRID_COLS; ++col)
         {
-            std::cout << "x_" << col + 1 << " = ";
+            std::cout << "x_" << col << " = ";
 
             const auto it = std::find(this->basis.begin(), this->basis.end(), col);
             if (it != this->basis.end())
@@ -231,18 +246,18 @@ BNegativeRemoval:
 
     const void Print()
     {
-        std::cout << "Basis" << "\t";
+        std::cout << "Basis" << '\t' << "B" << '\t';
         for (size_t col = 0; col < this->GRID_COLS - 1; ++col)
         {
-            std::cout << "x_" << col + 1 << "\t";
+            std::cout << "x_" << col + 1 << '\t';
         }
-        std::cout << "B" << std::endl;
+        std::cout << std::endl;
         for (size_t row = 0; row < this->GRID_ROWS; ++row)
         {
-            std::cout << "x_" << this->basis[row] + 1 << "\t";
+            std::cout << "x_" << this->basis[row] + 1 << '\t';
             for (size_t col = 0; col < this->GRID_COLS; ++col)
             {
-                std::cout << this->grid[row][col] << "\t";
+                std::cout << this->grid[row][col] << '\t';
             }
             std::cout << std::endl;
         }
@@ -263,7 +278,7 @@ private:
     {
         if (idx < this->z_function_coefficients.size())
         {
-            return this->z_function_coefficients[idx];
+            return this->z_function_coefficients[idx - 1];
         }
         else
         {
